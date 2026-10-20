@@ -21,6 +21,8 @@ from .const import (
     CONF_TIMEOUT,
     CONF_TTS_MAX_CHARS,
     CONF_USE_SSL,
+    CONF_CLIENT_CERT,
+    CONF_CLIENT_KEY,
     DEFAULT_AGENT_ID,
     DEFAULT_MODEL,
     DEFAULT_SESSION_KEY,
@@ -92,6 +94,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         use_ssl=options.get(
             CONF_USE_SSL, entry.data.get(CONF_USE_SSL, DEFAULT_USE_SSL)
         ),
+        client_cert=options.get(CONF_CLIENT_CERT, entry.data.get(CONF_CLIENT_CERT)),
+        client_key=options.get(CONF_CLIENT_KEY, entry.data.get(CONF_CLIENT_KEY)),
         timeout=options.get(
             CONF_TIMEOUT, entry.data.get(CONF_TIMEOUT, DEFAULT_TIMEOUT)
         ),
@@ -206,6 +210,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
             for client in targets:
                 client.set_session_key(session_key)
+
+            # Persist the selected session so it survives HA restarts.
+            for configured_entry in hass.config_entries.async_entries(DOMAIN):
+                if entry_id and configured_entry.entry_id != entry_id:
+                    continue
+                hass.config_entries.async_update_entry(
+                    configured_entry,
+                    options={**configured_entry.options, CONF_SESSION_KEY: session_key},
+                )
 
         async_register_admin_service(
             hass,

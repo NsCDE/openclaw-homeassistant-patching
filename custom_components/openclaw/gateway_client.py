@@ -156,10 +156,13 @@ class OpenClawGatewayClient:
         model: str | None = None,
         thinking: str | None = None,
         hass: Any | None = None,
+        client_cert: str | None = None,
+        client_key: str | None = None,
     ) -> None:
         """Initialize the Gateway client."""
         self._gateway = GatewayProtocol(
-            host, port, token, use_ssl, hass=hass
+            host, port, token, use_ssl, hass=hass,
+            client_cert=client_cert, client_key=client_key,
         )
         self._timeout = timeout
         self._session_key = session_key
@@ -511,14 +514,27 @@ class OpenClawGatewayClient:
 
     @staticmethod
     def _buffer_agent_payload(agent_run: AgentRun, payload: dict[str, Any]) -> None:
-        """Buffer assistant text from a Gateway agent payload."""
-        data = payload.get("data", {})
+        """Buffer user-visible assistant output from Gateway events."""
+        if payload.get("stream") != "assistant":
+            return
+
+        data = payload.get("data")
         if not isinstance(data, dict):
             data = {}
 
         output = payload.get("output")
-        if not output and "text" in data:
-            output = data.get("text")
+
+        if not output:
+            text = data.get("text")
+            delta = data.get("delta")
+
+            if isinstance(text, str) and text:
+                # Cumulative snapshot.
+                output = text
+            elif isinstance(delta, str) and delta:
+                # Incremental fragment: convert to cumulative text.
+                output = agent_run._full_text + delta
+
         if not output:
             result = payload.get("result")
             if isinstance(result, dict):

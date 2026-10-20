@@ -6,6 +6,7 @@ import json
 import logging
 import time
 import uuid
+import ssl
 from typing import Any, Callable
 
 from websockets.asyncio.client import connect
@@ -44,6 +45,8 @@ class GatewayProtocol:
         token: str | None,
         use_ssl: bool = False,
         hass: Any | None = None,
+        client_cert: str | None = None,
+        client_key: str | None = None,
     ) -> None:
         """Initialize the Gateway protocol client."""
         self._hass = hass
@@ -51,6 +54,8 @@ class GatewayProtocol:
         self._port = port
         self._token = token
         self._use_ssl = use_ssl
+        self._client_cert = client_cert
+        self._client_key = client_key
 
         # Connection state
         self._websocket: Any | None = None
@@ -151,6 +156,16 @@ class GatewayProtocol:
                 )
         self._pending_requests.clear()
 
+    def _create_ssl_context(self) -> ssl.SSLContext:
+        """Create TLS context in a worker thread."""
+        context = ssl.create_default_context()
+        if self._client_cert and self._client_key:
+            context.load_cert_chain(
+                certfile=self._client_cert,
+                keyfile=self._client_key,
+            )
+        return context
+
     async def _connection_loop(self) -> None:
         """Maintain connection with automatic reconnection."""
         while True:
@@ -160,8 +175,14 @@ class GatewayProtocol:
                 if self._token:
                     headers["Authorization"] = f"Bearer {self._token}"
                     headers["X-OpenClaw-Token"] = self._token
+                ssl_context = None
+                if self._use_ssl:
+                    ssl_context = await asyncio.to_thread(
+                        self._create_ssl_context
+                    )
                 async with connect(
                     self._uri,
+                    ssl=ssl_context,
                     ping_interval=30,
                     ping_timeout=10,
                     additional_headers=headers,
